@@ -61,6 +61,19 @@ struct MenuPopoverView: View {
     let appController: AppController
     @State private var showingSettings = false
 
+    /// Spawn a new TimerFloat instance
+    private func spawnNewTimer() {
+        if let appURL = Bundle.main.bundleURL as URL? {
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.createsNewApplicationInstance = true
+            NSWorkspace.shared.openApplication(at: appURL, configuration: configuration) { _, error in
+                if let error {
+                    Log.app.error("Failed to spawn new timer: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 12) {
@@ -70,6 +83,17 @@ struct MenuPopoverView: View {
                         .font(.headline)
                         .accessibilityAddTraits(.isHeader)
                     Spacer()
+                    Button {
+                        spawnNewTimer()
+                    } label: {
+                        Image(systemName: "plus.circle")
+                            .font(.body)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("New Timer")
+                    .accessibilityLabel("New Timer")
+                    .accessibilityHint("Opens a new TimerFloat instance")
+
                     Button {
                         showingSettings = true
                     } label: {
