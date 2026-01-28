@@ -14,6 +14,9 @@ struct StopwatchOverlayView: View {
     /// Track hover state
     @State private var isHovered: Bool = false
 
+    /// Whether to show window picker sheet
+    @State private var showWindowPicker: Bool = false
+
     /// Current opacity based on hover state
     private var currentOpacity: Double {
         isHovered ? 1.0 : idleOpacity
@@ -47,6 +50,21 @@ struct StopwatchOverlayView: View {
                 }
             }
             .padding(12)
+
+            // Pin button (top-right corner, visible on hover)
+            if isHovered {
+                VStack {
+                    HStack {
+                        Spacer()
+                        PinButtonOverlay(
+                            isPinned: WindowPinningService.shared.isPinned,
+                            onTap: onPinTap
+                        )
+                    }
+                    Spacer()
+                }
+                .padding(4)
+            }
         }
         .frame(width: 120, height: 120)
         .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
@@ -55,11 +73,25 @@ struct StopwatchOverlayView: View {
         .onHover { hovering in
             isHovered = hovering
         }
+        .sheet(isPresented: $showWindowPicker) {
+            WindowPickerView { window in
+                WindowPinningService.shared.pinToWindow(window)
+            }
+        }
         // Accessibility
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityValue(viewModel.formattedTime)
         .accessibilityHint("Stopwatch overlay. Drag to reposition.")
+    }
+
+    /// Handle pin button tap
+    private func onPinTap() {
+        if WindowPinningService.shared.isPinned {
+            WindowPinningService.shared.unpin()
+        } else {
+            showWindowPicker = true
+        }
     }
 
     /// Accessibility label based on stopwatch state

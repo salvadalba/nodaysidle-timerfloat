@@ -1,5 +1,26 @@
 import SwiftUI
 
+/// Pin button overlay component
+struct PinButtonOverlay: View {
+    let isPinned: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button {
+            onTap()
+        } label: {
+            Image(systemName: isPinned ? "pin.fill" : "pin")
+                .font(.system(size: 12))
+                .foregroundStyle(isPinned ? .orange : .secondary)
+                .padding(6)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .help(isPinned ? "Unpin from window" : "Pin to window")
+        .accessibilityLabel(isPinned ? "Unpin from window" : "Pin to window")
+    }
+}
+
 /// Floating overlay view displaying the countdown timer
 /// Uses TimelineView for smooth, frame-aligned updates
 struct TimerOverlayView: View {
@@ -17,6 +38,9 @@ struct TimerOverlayView: View {
 
     /// Track hover state
     @State private var isHovered: Bool = false
+
+    /// Whether to show window picker sheet
+    @State private var showWindowPicker: Bool = false
 
     /// Current opacity based on hover state
     private var currentOpacity: Double {
@@ -68,6 +92,21 @@ struct TimerOverlayView: View {
                 }
             }
             .padding(12)
+
+            // Pin button (top-right corner, visible on hover)
+            if isHovered {
+                VStack {
+                    HStack {
+                        Spacer()
+                        PinButtonOverlay(
+                            isPinned: WindowPinningService.shared.isPinned,
+                            onTap: onPinTap
+                        )
+                    }
+                    Spacer()
+                }
+                .padding(4)
+            }
         }
         .frame(width: 120, height: 120)
         .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
@@ -76,11 +115,25 @@ struct TimerOverlayView: View {
         .onHover { hovering in
             isHovered = hovering
         }
+        .sheet(isPresented: $showWindowPicker) {
+            WindowPickerView { window in
+                WindowPinningService.shared.pinToWindow(window)
+            }
+        }
         // Accessibility
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityValue(viewModel.formattedTime)
         .accessibilityHint("Timer overlay. Drag to reposition.")
+    }
+
+    /// Handle pin button tap
+    private func onPinTap() {
+        if WindowPinningService.shared.isPinned {
+            WindowPinningService.shared.unpin()
+        } else {
+            showWindowPicker = true
+        }
     }
 
     /// Accessibility label based on timer state
