@@ -84,12 +84,40 @@ final class AppController {
         timerViewModel.toggleTimer()
     }
 
+    // MARK: - Stopwatch Actions
+
+    /// Start the stopwatch
+    func startStopwatch() {
+        Log.app.info("Starting stopwatch")
+        timerViewModel.startStopwatch()
+        metricsService.recordTimerStart(duration: 0) // 0 indicates stopwatch
+        showStopwatchOverlay()
+    }
+
+    /// Stop the stopwatch
+    func stopStopwatch() {
+        Log.app.info("Stopping stopwatch")
+        timerViewModel.stopStopwatch()
+        hideOverlay()
+    }
+
     // MARK: - Overlay Management
 
-    /// Show the timer overlay
+    /// Show the stopwatch overlay
+    func showStopwatchOverlay() {
+        let idleOpacity = PreferencesService.shared.preferences?.overlayIdleOpacity ?? 0.8
+        windowService.showOverlay(with: StopwatchOverlayView(viewModel: timerViewModel, idleOpacity: idleOpacity))
+    }
+
+    /// Show the timer overlay (chooses correct view based on mode)
     func showOverlay() {
         let idleOpacity = PreferencesService.shared.preferences?.overlayIdleOpacity ?? 0.8
-        windowService.showOverlay(with: TimerOverlayView(viewModel: timerViewModel, idleOpacity: idleOpacity))
+
+        if timerViewModel.isStopwatch {
+            windowService.showOverlay(with: StopwatchOverlayView(viewModel: timerViewModel, idleOpacity: idleOpacity))
+        } else {
+            windowService.showOverlay(with: TimerOverlayView(viewModel: timerViewModel, idleOpacity: idleOpacity))
+        }
     }
 
     /// Hide the timer overlay
@@ -101,7 +129,12 @@ final class AppController {
     func updateOverlay() {
         if windowService.isVisible {
             let idleOpacity = PreferencesService.shared.preferences?.overlayIdleOpacity ?? 0.8
-            windowService.updateContent(TimerOverlayView(viewModel: timerViewModel, idleOpacity: idleOpacity))
+
+            if timerViewModel.isStopwatch {
+                windowService.updateContent(StopwatchOverlayView(viewModel: timerViewModel, idleOpacity: idleOpacity))
+            } else {
+                windowService.updateContent(TimerOverlayView(viewModel: timerViewModel, idleOpacity: idleOpacity))
+            }
         }
     }
 
