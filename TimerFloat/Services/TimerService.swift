@@ -14,6 +14,8 @@ enum TimerError: Error, Sendable {
     case noActiveTimer
     /// Invalid duration provided
     case invalidDuration
+    /// Attempted stopwatch operation when not in stopwatch mode
+    case notInStopwatchMode
 }
 
 /// Actor-based timer service for thread-safe countdown management
@@ -22,8 +24,8 @@ actor TimerService {
     /// Current state of the timer
     private(set) var state: TimerState = .idle
 
-    /// Task managing the countdown
-    private var countdownTask: Task<Void, Never>?
+    /// Task managing the countdown or stopwatch
+    private var timerTask: Task<Void, Never>?
 
     /// Continuation for the state stream
     private var stateContinuation: AsyncStream<TimerState>.Continuation?
@@ -68,7 +70,7 @@ actor TimerService {
         state = .running(remaining: duration, total: duration)
         notifyStateChange()
 
-        countdownTask = Task {
+        timerTask = Task {
             await runCountdown(total: duration)
         }
     }
@@ -82,8 +84,8 @@ actor TimerService {
 
         Log.timer.info("Pausing timer with \(remaining) seconds remaining")
 
-        countdownTask?.cancel()
-        countdownTask = nil
+        timerTask?.cancel()
+        timerTask = nil
 
         state = .paused(remaining: remaining, total: total)
         notifyStateChange()
@@ -101,7 +103,7 @@ actor TimerService {
         state = .running(remaining: remaining, total: total)
         notifyStateChange()
 
-        countdownTask = Task {
+        timerTask = Task {
             await runCountdown(total: total, startingFrom: remaining)
         }
     }
@@ -121,8 +123,8 @@ actor TimerService {
             timerSignpostID = nil
         }
 
-        countdownTask?.cancel()
-        countdownTask = nil
+        timerTask?.cancel()
+        timerTask = nil
 
         state = .idle
         notifyStateChange()
@@ -138,8 +140,97 @@ actor TimerService {
             timerSignpostID = nil
         }
 
-        countdownTask?.cancel()
-        countdownTask = nil
+        timerTask?.cancel()
+        timerTask = nil
+
+        state = .idle
+        notifyStateChange()
+    }
+
+    /// Current timer mode based on state
+    var currentMode: TimerMode? {
+        switch state {
+        case .idle, .completed:
+            return nil
+        case .running, .paused:
+            return .countdown
+        case .stopwatchRunning, .stopwatchPaused:
+            return .stopwatch
+        }
+    }
+
+    // MARK: - Stopwatch Methods
+
+    /// Start the stopwatch counting up from zero
+    func startStopwatch() {
+        guard !state.isActive else {
+            Log.timer.warning("Cannot start stopwatch: timer already active")
+            return
+        }
+
+        Log.timer.info("Starting stopwatch")
+
+        // Begin signpost interval for stopwatch tracking
+        timerSignpostID = OSSignpostID(log: Self.signpostLog)
+        os_signpost(.begin, log: Self.signpostLog, name: "Stopwatch", signpostID: timerSignpostID!)
+
+        state = .stopwatchRunning(elapsed: 0)
+        notifyStateChange()
+
+        timerTask = Task {
+            await runStopwatch()
+        }
+    }
+
+    /// Pause the stopwatch
+    /// - Throws: TimerError.notInStopwatchMode if not in stopwatch mode
+    func pauseStopwatch() throws(TimerError) {
+        guard case .stopwatchRunning(let elapsed) = state else {
+            throw .notInStopwatchMode
+        }
+
+        Log.timer.info("Pausing stopwatch at \(elapsed) seconds")
+
+        timerTask?.cancel()
+        timerTask = nil
+
+        state = .stopwatchPaused(elapsed: elapsed)
+        notifyStateChange()
+    }
+
+    /// Resume a paused stopwatch
+    /// - Throws: TimerError.notInStopwatchMode if not paused stopwatch
+    func resumeStopwatch() throws(TimerError) {
+        guard case .stopwatchPaused(let elapsed) = state else {
+            throw .notInStopwatchMode
+        }
+
+        Log.timer.info("Resuming stopwatch from \(elapsed) seconds")
+
+        state = .stopwatchRunning(elapsed: elapsed)
+        notifyStateChange()
+
+        timerTask = Task {
+            await runStopwatch(startingFrom: elapsed)
+        }
+    }
+
+    /// Stop the stopwatch and reset to idle
+    func stopStopwatch() {
+        guard state.isStopwatch else {
+            return
+        }
+
+        Log.timer.info("Stopping stopwatch")
+
+        // End signpost interval
+        if let signpostID = timerSignpostID {
+            os_signpost(.end, log: Self.signpostLog, name: "Stopwatch", signpostID: signpostID, "stopped")
+            timerSignpostID = nil
+        }
+
+        timerTask?.cancel()
+        timerTask = nil
 
         state = .idle
         notifyStateChange()
@@ -179,6 +270,30 @@ actor TimerService {
 
             do {
                 try await Task.sleep(for: .seconds(sleepDuration))
+            } catch {
+                // Task was cancelled
+                return
+            }
+        }
+    }
+
+    /// Run the stopwatch loop (counts up)
+    private func runStopwatch(startingFrom: TimeInterval = 0) async {
+        let startTime = Date()
+
+        while !Task.isCancelled {
+            let additionalElapsed = Date().timeIntervalSince(startTime)
+            let totalElapsed = startingFrom + additionalElapsed
+
+            // Signpost event for stopwatch tick
+            os_signpost(.event, log: Self.signpostLog, name: "StopwatchTick", "elapsed: %.1f", totalElapsed)
+
+            state = .stopwatchRunning(elapsed: totalElapsed)
+            notifyStateChange()
+
+            // Sleep for approximately 100ms for smooth updates
+            do {
+                try await Task.sleep(for: .milliseconds(100))
             } catch {
                 // Task was cancelled
                 return

@@ -213,6 +213,99 @@ struct TimerServiceTests {
 
         #expect(firstState == .idle)
     }
+
+    // MARK: - Stopwatch Tests
+
+    @Test("Starting stopwatch sets stopwatchRunning state")
+    func startStopwatchSetsRunningState() async throws {
+        let service = TimerService()
+        await service.startStopwatch()
+
+        let state = await service.state
+        guard case .stopwatchRunning(let elapsed) = state else {
+            Issue.record("Expected stopwatchRunning state")
+            return
+        }
+
+        #expect(elapsed >= 0)
+        #expect(elapsed < 1) // Should be very close to 0
+    }
+
+    @Test("Pausing stopwatch preserves elapsed time")
+    func pauseStopwatchPreservesElapsedTime() async throws {
+        let service = TimerService()
+        await service.startStopwatch()
+
+        // Wait to allow some time to elapse
+        try await Task.sleep(for: .milliseconds(500))
+
+        try await service.pauseStopwatch()
+
+        let state = await service.state
+        guard case .stopwatchPaused(let elapsed) = state else {
+            Issue.record("Expected stopwatchPaused state")
+            return
+        }
+
+        #expect(elapsed >= 0.4) // At least 400ms should have passed
+        #expect(elapsed < 1.0)
+    }
+
+    @Test("Resuming stopwatch continues from paused time")
+    func resumeStopwatchContinuesFromPausedTime() async throws {
+        let service = TimerService()
+        await service.startStopwatch()
+        try await Task.sleep(for: .milliseconds(200))
+        try await service.pauseStopwatch()
+
+        let pausedState = await service.state
+        guard case .stopwatchPaused(let pausedElapsed) = pausedState else {
+            Issue.record("Expected stopwatchPaused state")
+            return
+        }
+
+        try await service.resumeStopwatch()
+
+        let state = await service.state
+        guard case .stopwatchRunning(let elapsed) = state else {
+            Issue.record("Expected stopwatchRunning state")
+            return
+        }
+
+        // Elapsed should be close to what it was when paused
+        #expect(abs(elapsed - pausedElapsed) < 0.5)
+    }
+
+    @Test("Stopping stopwatch resets to idle")
+    func stopStopwatchResetsToIdle() async throws {
+        let service = TimerService()
+        await service.startStopwatch()
+        await service.stopStopwatch()
+
+        let state = await service.state
+        #expect(state == .idle)
+    }
+
+    @Test("Current mode returns correct mode")
+    func currentModeReturnsCorrectMode() async throws {
+        let service = TimerService()
+
+        // Idle state should return nil
+        var mode = await service.currentMode
+        #expect(mode == nil)
+
+        // Countdown mode
+        try await service.startTimer(duration: 60)
+        mode = await service.currentMode
+        #expect(mode == .countdown)
+
+        await service.reset()
+
+        // Stopwatch mode
+        await service.startStopwatch()
+        mode = await service.currentMode
+        #expect(mode == .stopwatch)
+    }
 }
 
 // MARK: - TimerState Tests
