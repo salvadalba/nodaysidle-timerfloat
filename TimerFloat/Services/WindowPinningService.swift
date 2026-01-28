@@ -134,7 +134,7 @@ final class WindowPinningService {
     private func startTracking() {
         trackingTask?.cancel()
 
-        trackingTask = Task { [weak self] in
+        trackingTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 guard let self = self,
                       let pinnedWindow = self.pinnedWindowInfo else {

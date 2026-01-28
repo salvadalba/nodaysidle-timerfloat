@@ -48,6 +48,7 @@ final class WindowService {
     private init() {
         setupMoveObserver()
         setupScreenChangeObserver()
+        setupWindowPinning()
         Log.window.info("WindowService initialized")
     }
 
@@ -95,6 +96,28 @@ final class WindowService {
             Task { @MainActor in
                 self?.handleScreenConfigurationChange()
             }
+        }
+    }
+
+    /// Connect window pinning service to update overlay position when pinned window moves
+    private func setupWindowPinning() {
+        let pinningService = WindowPinningService.shared
+
+        pinningService.onWindowMoved = { [weak self] newPosition in
+            guard let self = self else { return }
+            // Convert from screen coordinates (top-left origin) to AppKit (bottom-left)
+            if let screen = NSScreen.main {
+                let windowHeight = self.overlayWindow?.frame.height ?? self.defaultSize.height
+                let flippedY = screen.frame.height - newPosition.y - windowHeight
+                let appKitPosition = NSPoint(x: newPosition.x, y: flippedY)
+                self.updatePosition(to: appKitPosition, saveToDisk: false)
+            }
+        }
+
+        pinningService.onWindowClosed = { [weak self] in
+            // Window closed, unpin automatically and restore saved position
+            Log.window.info("Pinned window closed, returning to saved position")
+            self?.restoreDefaultPosition()
         }
     }
 
@@ -217,15 +240,28 @@ final class WindowService {
     }
 
     /// Update the overlay position
-    /// - Parameter position: New position for the window origin
-    func updatePosition(to position: NSPoint) {
+    /// - Parameters:
+    ///   - position: New position for the window origin
+    ///   - saveToDisk: Whether to persist the position to preferences (default: true)
+    func updatePosition(to position: NSPoint, saveToDisk: Bool = true) {
         guard let window = overlayWindow else { return }
 
         // Clamp to screen bounds
         let clampedPosition = clampToScreenBounds(position)
         window.setFrameOrigin(clampedPosition)
 
+        if saveToDisk {
+            savePosition(clampedPosition)
+        }
+
         Log.window.debug("Overlay position updated to: (\(clampedPosition.x), \(clampedPosition.y))")
+    }
+
+    /// Restore the overlay to its default/saved position
+    func restoreDefaultPosition() {
+        let position = defaultPosition
+        updatePosition(to: position, saveToDisk: false)
+        Log.window.info("Overlay restored to default position: (\(position.x), \(position.y))")
     }
 
     /// Get the current overlay position
