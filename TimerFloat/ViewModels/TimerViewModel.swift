@@ -18,12 +18,40 @@ final class TimerViewModel {
 
     /// Formatted time string in MM:SS format
     var formattedTime: String {
-        guard let remaining = state.remainingTime else {
+        let timeValue: TimeInterval
+
+        switch state {
+        case .idle, .completed:
             return "00:00"
+        case .running(let remaining, _), .paused(let remaining, _):
+            timeValue = remaining
+        case .stopwatchRunning(let elapsed), .stopwatchPaused(let elapsed):
+            timeValue = elapsed
         }
-        let minutes = Int(remaining) / 60
-        let seconds = Int(remaining) % 60
+
+        let minutes = Int(timeValue) / 60
+        let seconds = Int(timeValue) % 60
         return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    /// Formatted time with centiseconds (MM:SS.CC) for stopwatch display
+    var formattedTimeWithMillis: String {
+        let timeValue: TimeInterval
+
+        switch state {
+        case .idle, .completed:
+            return "00:00.00"
+        case .running(let remaining, _), .paused(let remaining, _):
+            timeValue = remaining
+        case .stopwatchRunning(let elapsed), .stopwatchPaused(let elapsed):
+            timeValue = elapsed
+        }
+
+        let totalSeconds = Int(timeValue)
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        let centiseconds = Int((timeValue.truncatingRemainder(dividingBy: 1)) * 100)
+        return String(format: "%02d:%02d.%02d", minutes, seconds, centiseconds)
     }
 
     /// Progress from 0.0 to 1.0
@@ -49,6 +77,23 @@ final class TimerViewModel {
     /// Whether the timer has completed
     var isCompleted: Bool {
         state.isCompleted
+    }
+
+    /// Whether currently in stopwatch mode
+    var isStopwatch: Bool {
+        state.isStopwatch
+    }
+
+    /// Current timer mode, or nil if idle
+    var currentMode: TimerMode? {
+        switch state {
+        case .idle, .completed:
+            return nil
+        case .running, .paused:
+            return .countdown
+        case .stopwatchRunning, .stopwatchPaused:
+            return .stopwatch
+        }
     }
 
     init() {
@@ -122,9 +167,17 @@ final class TimerViewModel {
     /// Toggle between running and paused states
     func toggleTimer() {
         if isRunning {
-            pauseTimer()
+            if isStopwatch {
+                pauseStopwatch()
+            } else {
+                pauseTimer()
+            }
         } else if isPaused {
-            resumeTimer()
+            if isStopwatch {
+                resumeStopwatch()
+            } else {
+                resumeTimer()
+            }
         }
     }
 
@@ -132,6 +185,44 @@ final class TimerViewModel {
     func resetTimer() {
         Task {
             await timerService.reset()
+        }
+    }
+
+    // MARK: - Stopwatch Methods
+
+    /// Start the stopwatch
+    func startStopwatch() {
+        Task {
+            await timerService.startStopwatch()
+        }
+    }
+
+    /// Pause the stopwatch
+    func pauseStopwatch() {
+        Task {
+            do {
+                try await timerService.pauseStopwatch()
+            } catch {
+                Log.timer.error("Failed to pause stopwatch: \(error)")
+            }
+        }
+    }
+
+    /// Resume the stopwatch
+    func resumeStopwatch() {
+        Task {
+            do {
+                try await timerService.resumeStopwatch()
+            } catch {
+                Log.timer.error("Failed to resume stopwatch: \(error)")
+            }
+        }
+    }
+
+    /// Stop the stopwatch
+    func stopStopwatch() {
+        Task {
+            await timerService.stopStopwatch()
         }
     }
 }
