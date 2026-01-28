@@ -32,9 +32,9 @@ struct MenuBarIcon: View {
         switch timerViewModel.state {
         case .idle:
             return "timer.circle"
-        case .running:
+        case .running, .stopwatchRunning:
             return "timer.circle.fill"
-        case .paused:
+        case .paused, .stopwatchPaused:
             return "pause.circle.fill"
         case .completed:
             return "checkmark.circle.fill"
@@ -52,6 +52,10 @@ struct MenuBarIcon: View {
             return "TimerFloat, timer paused, \(timerViewModel.formattedTime) remaining"
         case .completed:
             return "TimerFloat, timer complete"
+        case .stopwatchRunning:
+            return "TimerFloat, stopwatch running, \(timerViewModel.formattedTime) elapsed"
+        case .stopwatchPaused:
+            return "TimerFloat, stopwatch paused, \(timerViewModel.formattedTime) elapsed"
         }
     }
 }

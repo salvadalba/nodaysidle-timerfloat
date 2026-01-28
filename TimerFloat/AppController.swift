@@ -237,7 +237,7 @@ final class AppController {
             if windowService.isVisible {
                 hideOverlay()
             }
-        case .running, .paused:
+        case .running, .paused, .stopwatchRunning, .stopwatchPaused:
             // Ensure overlay is showing
             if !windowService.isVisible {
                 showOverlay()
