@@ -93,12 +93,25 @@ Click the **gear icon** in the menu bar popover to access settings:
 
 ---
 
+## Multiple Timers
+
+You can run multiple independent timers simultaneously:
+
+1. Click the **+** button in the menu bar popover to spawn a new timer
+2. Each instance has its own overlay and settings
+3. Drag each overlay to different positions
+
+Alternatively, from Terminal: `open -n /Applications/TimerFloat.app`
+
+---
+
 ## Tips & Tricks
 
 1. **Quick Pomodoro**: Use the 25-minute preset for focused work sessions
 2. **Hover for clarity**: The overlay becomes fully opaque when you hover over it
 3. **Corner positioning**: Drag the overlay to a screen corner to keep it visible but unobtrusive
 4. **Multiple monitors**: The overlay works across all connected displays
+5. **Multiple timers**: Use the + button to run several timers at once
 
 ---
 
