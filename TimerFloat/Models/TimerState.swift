@@ -21,20 +21,28 @@ enum TimerState: Sendable, Equatable {
     /// Timer has completed its countdown
     case completed
 
-    /// The remaining time in seconds, or nil if idle/completed
+    /// Stopwatch is actively counting up
+    /// - Parameter elapsed: Time elapsed in seconds
+    case stopwatchRunning(elapsed: TimeInterval)
+
+    /// Stopwatch is paused
+    /// - Parameter elapsed: Time elapsed when paused in seconds
+    case stopwatchPaused(elapsed: TimeInterval)
+
+    /// The remaining time in seconds, or nil if idle/completed/stopwatch
     var remainingTime: TimeInterval? {
         switch self {
-        case .idle, .completed:
+        case .idle, .completed, .stopwatchRunning, .stopwatchPaused:
             return nil
         case .running(let remaining, _), .paused(let remaining, _):
             return remaining
         }
     }
 
-    /// The total duration in seconds, or nil if idle/completed
+    /// The total duration in seconds, or nil if idle/completed/stopwatch
     var totalTime: TimeInterval? {
         switch self {
-        case .idle, .completed:
+        case .idle, .completed, .stopwatchRunning, .stopwatchPaused:
             return nil
         case .running(_, let total), .paused(_, let total):
             return total
@@ -42,10 +50,10 @@ enum TimerState: Sendable, Equatable {
     }
 
     /// Progress from 0.0 (just started) to 1.0 (completed)
-    /// Returns 0.0 for idle state and 1.0 for completed state
+    /// Returns 0.0 for idle state, stopwatch states, and 1.0 for completed state
     var progress: Double {
         switch self {
-        case .idle:
+        case .idle, .stopwatchRunning, .stopwatchPaused:
             return 0.0
         case .completed:
             return 1.0
@@ -57,14 +65,22 @@ enum TimerState: Sendable, Equatable {
 
     /// Whether the timer is currently running
     var isRunning: Bool {
-        if case .running = self { return true }
-        return false
+        switch self {
+        case .running, .stopwatchRunning:
+            return true
+        default:
+            return false
+        }
     }
 
     /// Whether the timer is paused
     var isPaused: Bool {
-        if case .paused = self { return true }
-        return false
+        switch self {
+        case .paused, .stopwatchPaused:
+            return true
+        default:
+            return false
+        }
     }
 
     /// Whether the timer is idle (not started)
@@ -82,9 +98,29 @@ enum TimerState: Sendable, Equatable {
     /// Whether there is an active timer (running or paused)
     var isActive: Bool {
         switch self {
-        case .running, .paused:
+        case .running, .paused, .stopwatchRunning, .stopwatchPaused:
             return true
         case .idle, .completed:
+            return false
+        }
+    }
+
+    /// The elapsed time in seconds (for stopwatch mode), or nil if countdown
+    var elapsedTime: TimeInterval? {
+        switch self {
+        case .stopwatchRunning(let elapsed), .stopwatchPaused(let elapsed):
+            return elapsed
+        case .idle, .running, .paused, .completed:
+            return nil
+        }
+    }
+
+    /// Whether this is a stopwatch state
+    var isStopwatch: Bool {
+        switch self {
+        case .stopwatchRunning, .stopwatchPaused:
+            return true
+        default:
             return false
         }
     }

@@ -303,4 +303,25 @@ struct TimerStateTests {
         #expect(TimerState.running(remaining: 30, total: 60) == TimerState.running(remaining: 30, total: 60))
         #expect(TimerState.running(remaining: 30, total: 60) != TimerState.running(remaining: 31, total: 60))
     }
+
+    @Test("Stopwatch running state tracks elapsed time")
+    func stopwatchRunningStateTracksElapsedTime() {
+        let state = TimerState.stopwatchRunning(elapsed: 30)
+        #expect(state.elapsedTime == 30)
+        #expect(state.remainingTime == nil)
+    }
+
+    @Test("Stopwatch paused state preserves elapsed time")
+    func stopwatchPausedStatePreservesElapsedTime() {
+        let state = TimerState.stopwatchPaused(elapsed: 45)
+        #expect(state.elapsedTime == 45)
+    }
+
+    @Test("isStopwatch returns true only for stopwatch states")
+    func isStopwatchOnlyForStopwatchStates() {
+        #expect(TimerState.idle.isStopwatch == false)
+        #expect(TimerState.running(remaining: 30, total: 60).isStopwatch == false)
+        #expect(TimerState.stopwatchRunning(elapsed: 30).isStopwatch == true)
+        #expect(TimerState.stopwatchPaused(elapsed: 30).isStopwatch == true)
+    }
 }
