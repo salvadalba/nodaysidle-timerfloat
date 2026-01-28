@@ -433,6 +433,7 @@ struct PresetButton: View {
 /// View showing active timer controls
 struct ActiveTimerView: View {
     let appController: AppController
+    @State private var showWindowPicker: Bool = false
 
     private var isStopwatch: Bool {
         appController.timerViewModel.isStopwatch
@@ -494,6 +495,38 @@ struct ActiveTimerView: View {
                 }
                 .buttonStyle(.bordered)
                 .accessibilityLabel(isStopwatch ? "Stop stopwatch" : "Cancel timer")
+            }
+
+            Divider()
+
+            // Pin status
+            HStack {
+                if WindowPinningService.shared.isPinned {
+                    Label("Pinned", systemImage: "pin.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+
+                    Spacer()
+
+                    Button("Unpin") {
+                        WindowPinningService.shared.unpin()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                } else {
+                    Button {
+                        showWindowPicker = true
+                    } label: {
+                        Label("Pin to Window", systemImage: "pin")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+            .sheet(isPresented: $showWindowPicker) {
+                WindowPickerView { window in
+                    WindowPinningService.shared.pinToWindow(window)
+                }
             }
         }
     }
