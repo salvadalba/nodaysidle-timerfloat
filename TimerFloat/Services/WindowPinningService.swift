@@ -48,55 +48,58 @@ final class WindowPinningService {
 
     /// Get list of windows available for pinning
     /// - Returns: Array of PinnableWindow info, or nil if unable to get window list
-    func getAvailableWindows() async -> [PinnableWindow]? {
-        // Get all on-screen windows
-        guard let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
-            Log.window.error("Failed to get window list")
-            return nil
-        }
-
-        var windows: [PinnableWindow] = []
-
-        for windowInfo in windowList {
-            guard let windowID = windowInfo[kCGWindowNumber as String] as? CGWindowID,
-                  let ownerPID = windowInfo[kCGWindowOwnerPID as String] as? pid_t,
-                  let ownerName = windowInfo[kCGWindowOwnerName as String] as? String,
-                  let boundsDict = windowInfo[kCGWindowBounds as String] as? [String: CGFloat],
-                  let layer = windowInfo[kCGWindowLayer as String] as? Int else {
-                continue
+    nonisolated func getAvailableWindows() async -> [PinnableWindow]? {
+        // Run CGWindowList call on background thread for better performance
+        return await Task.detached(priority: .userInitiated) {
+            // Get all on-screen windows
+            guard let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+                return nil as [PinnableWindow]?
             }
 
-            // Skip windows at weird layers (menu bar, dock, etc.)
-            guard layer == 0 else { continue }
+            let myPID = ProcessInfo.processInfo.processIdentifier
+            var windows: [PinnableWindow] = []
 
-            // Skip our own app's windows
-            guard ownerPID != ProcessInfo.processInfo.processIdentifier else { continue }
+            for windowInfo in windowList {
+                guard let windowID = windowInfo[kCGWindowNumber as String] as? CGWindowID,
+                      let ownerPID = windowInfo[kCGWindowOwnerPID as String] as? pid_t,
+                      let ownerName = windowInfo[kCGWindowOwnerName as String] as? String,
+                      let boundsDict = windowInfo[kCGWindowBounds as String] as? [String: CGFloat],
+                      let layer = windowInfo[kCGWindowLayer as String] as? Int else {
+                    continue
+                }
 
-            // Skip very small windows (probably menu items or tooltips)
-            let width = boundsDict["Width"] ?? 0
-            let height = boundsDict["Height"] ?? 0
-            guard width > 100 && height > 100 else { continue }
+                // Skip windows at weird layers (menu bar, dock, etc.)
+                guard layer == 0 else { continue }
 
-            let bounds = CGRect(
-                x: boundsDict["X"] ?? 0,
-                y: boundsDict["Y"] ?? 0,
-                width: width,
-                height: height
-            )
+                // Skip our own app's windows
+                guard ownerPID != myPID else { continue }
 
-            let windowTitle = windowInfo[kCGWindowName as String] as? String ?? ""
+                // Skip very small windows (probably menu items or tooltips)
+                let width = boundsDict["Width"] ?? 0
+                let height = boundsDict["Height"] ?? 0
+                guard width > 100 && height > 100 else { continue }
 
-            windows.append(PinnableWindow(
-                id: windowID,
-                ownerName: ownerName,
-                windowTitle: windowTitle,
-                bounds: bounds,
-                ownerPID: ownerPID
-            ))
-        }
+                let bounds = CGRect(
+                    x: boundsDict["X"] ?? 0,
+                    y: boundsDict["Y"] ?? 0,
+                    width: width,
+                    height: height
+                )
 
-        // Sort by app name then window title
-        return windows.sorted { $0.displayName < $1.displayName }
+                let windowTitle = windowInfo[kCGWindowName as String] as? String ?? ""
+
+                windows.append(PinnableWindow(
+                    id: windowID,
+                    ownerName: ownerName,
+                    windowTitle: windowTitle,
+                    bounds: bounds,
+                    ownerPID: ownerPID
+                ))
+            }
+
+            // Sort by app name then window title
+            return windows.sorted { $0.displayName < $1.displayName }
+        }.value
     }
 
     /// Pin the overlay to a specific window

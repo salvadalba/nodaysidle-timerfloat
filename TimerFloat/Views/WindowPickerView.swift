@@ -85,19 +85,39 @@ struct WindowPickerView: View {
     }
 }
 
+/// Cache for app icons to avoid repeated lookups
+@MainActor
+final class AppIconCache {
+    static let shared = AppIconCache()
+    private var cache: [pid_t: NSImage] = [:]
+
+    func icon(for pid: pid_t) -> NSImage? {
+        if let cached = cache[pid] {
+            return cached
+        }
+        if let app = NSRunningApplication(processIdentifier: pid),
+           let icon = app.icon {
+            cache[pid] = icon
+            return icon
+        }
+        return nil
+    }
+}
+
 /// Row displaying a single window option
 struct WindowRow: View {
     let window: PinnableWindow
     let onSelect: () -> Void
+
+    @State private var appIcon: NSImage?
 
     var body: some View {
         Button {
             onSelect()
         } label: {
             HStack {
-                // App icon (if available)
-                if let app = NSRunningApplication(processIdentifier: window.ownerPID),
-                   let icon = app.icon {
+                // App icon (cached)
+                if let icon = appIcon {
                     Image(nsImage: icon)
                         .resizable()
                         .frame(width: 24, height: 24)
@@ -124,6 +144,9 @@ struct WindowRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .onAppear {
+            appIcon = AppIconCache.shared.icon(for: window.ownerPID)
+        }
     }
 }
 
