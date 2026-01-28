@@ -1,6 +1,7 @@
 import SwiftUI
 
 /// Floating overlay view displaying the stopwatch
+/// Uses a distinct pill shape and teal color to differentiate from countdown timer
 struct StopwatchOverlayView: View {
     /// The timer view model
     @Bindable var viewModel: TimerViewModel
@@ -8,14 +9,14 @@ struct StopwatchOverlayView: View {
     /// Base opacity when not hovered (from preferences)
     var idleOpacity: Double = 0.8
 
-    /// Size of the circular display area
-    private let displaySize: CGFloat = 100
-
     /// Track hover state
     @State private var isHovered: Bool = false
 
     /// Whether to show window picker sheet
     @State private var showWindowPicker: Bool = false
+
+    /// Animated pulse for running state
+    @State private var isPulsing: Bool = false
 
     /// Current opacity based on hover state
     private var currentOpacity: Double {
@@ -24,32 +25,71 @@ struct StopwatchOverlayView: View {
 
     var body: some View {
         ZStack {
+            // Subtle teal tint background layer
+            RoundedRectangle(cornerRadius: TimerDesign.stopwatchCornerRadius)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.TimerFloat.stopwatch.opacity(0.08),
+                            Color.TimerFloat.stopwatchLight.opacity(0.04)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
             // Background with material effect
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: TimerDesign.stopwatchCornerRadius)
                 .fill(.regularMaterial)
 
             // Stopwatch content
-            VStack(spacing: 4) {
-                // Stopwatch icon
-                Image(systemName: "stopwatch.fill")
-                    .font(.system(size: 20))
-                    .foregroundStyle(.secondary)
+            HStack(spacing: 12) {
+                // Animated stopwatch icon
+                ZStack {
+                    // Glow effect when running
+                    if viewModel.isRunning {
+                        Circle()
+                            .fill(Color.TimerFloat.stopwatch.opacity(0.3))
+                            .frame(width: 40, height: 40)
+                            .blur(radius: 8)
+                            .scaleEffect(isPulsing ? 1.2 : 1.0)
+                    }
+
+                    // Stopwatch icon with teal accent
+                    Image(systemName: viewModel.isRunning ? "stopwatch.fill" : "stopwatch")
+                        .font(.system(size: 28, weight: .medium))
+                        .foregroundStyle(
+                            viewModel.isRunning
+                                ? Color.TimerFloat.stopwatch
+                                : .secondary
+                        )
+                        .symbolEffect(.pulse, options: .repeating, isActive: viewModel.isRunning)
+                }
+                .frame(width: 44, height: 44)
 
                 // Time display with centiseconds
-                TimelineView(.periodic(from: .now, by: 0.1)) { _ in
-                    Text(viewModel.formattedTimeWithMillis)
-                        .font(.system(size: 22, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.primary)
-                }
+                VStack(alignment: .leading, spacing: 2) {
+                    TimelineView(.periodic(from: .now, by: 0.1)) { _ in
+                        Text(viewModel.formattedTimeWithMillis)
+                            .font(TimerTypography.stopwatchDisplay(size: 22))
+                            .foregroundStyle(.primary)
+                            .monospacedDigit()
+                    }
 
-                // State indicator
-                if viewModel.isPaused {
-                    Label("Paused", systemImage: "pause.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    // State indicator
+                    if viewModel.isPaused {
+                        Label("Paused", systemImage: "pause.fill")
+                            .font(.caption2)
+                            .foregroundStyle(Color.TimerFloat.warning)
+                    } else if viewModel.isRunning {
+                        Text("Running")
+                            .font(.caption2)
+                            .foregroundStyle(Color.TimerFloat.stopwatch)
+                    }
                 }
             }
-            .padding(12)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
 
             // Pin button (top-right corner, visible on hover)
             if isHovered {
@@ -64,14 +104,22 @@ struct StopwatchOverlayView: View {
                     Spacer()
                 }
                 .padding(4)
+                .transition(.opacity.combined(with: .scale(scale: 0.8)))
             }
         }
-        .frame(width: 120, height: 120)
-        .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+        .frame(width: TimerDesign.stopwatchWidth, height: TimerDesign.stopwatchHeight)
+        .overlayShadow()
         .opacity(currentOpacity)
-        .animation(.easeInOut(duration: 0.2), value: isHovered)
+        .hoverScale(isHovered)
+        .animation(TimerAnimations.hover, value: isHovered)
         .onHover { hovering in
             isHovered = hovering
+        }
+        .onAppear {
+            // Start subtle pulse animation
+            withAnimation(TimerAnimations.glowPulse) {
+                isPulsing = true
+            }
         }
         .sheet(isPresented: $showWindowPicker) {
             WindowPickerView { window in

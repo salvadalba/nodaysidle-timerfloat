@@ -5,17 +5,26 @@ struct PinButtonOverlay: View {
     let isPinned: Bool
     let onTap: () -> Void
 
+    @State private var isPressed = false
+
     var body: some View {
         Button {
             onTap()
         } label: {
             Image(systemName: isPinned ? "pin.fill" : "pin")
                 .font(.system(size: 12))
-                .foregroundStyle(isPinned ? .orange : .secondary)
+                .foregroundStyle(isPinned ? Color.TimerFloat.warning : .secondary)
                 .padding(6)
                 .background(.ultraThinMaterial, in: Circle())
         }
         .buttonStyle(.plain)
+        .scaleEffect(isPressed ? TimerDesign.pressScale : 1.0)
+        .animation(TimerAnimations.press, value: isPressed)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in isPressed = true }
+                .onEnded { _ in isPressed = false }
+        )
         .help(isPinned ? "Unpin from window" : "Pin to window")
         .accessibilityLabel(isPinned ? "Unpin from window" : "Pin to window")
     }
@@ -31,10 +40,10 @@ struct TimerOverlayView: View {
     var idleOpacity: Double = 0.8
 
     /// Size of the circular progress indicator
-    private let progressSize: CGFloat = 100
+    private let progressSize: CGFloat = TimerDesign.progressSize
 
     /// Line width for the progress ring
-    private let progressLineWidth: CGFloat = 6
+    private let progressLineWidth: CGFloat = TimerDesign.progressLineWidth
 
     /// Track hover state
     @State private var isHovered: Bool = false
@@ -50,36 +59,47 @@ struct TimerOverlayView: View {
     var body: some View {
         ZStack {
             // Background with material effect
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: TimerDesign.overlayCornerRadius)
                 .fill(.regularMaterial)
 
             // Timer content
             VStack(spacing: 8) {
                 // Circular progress indicator with time
                 ZStack {
+                    // Subtle tick marks
+                    TickMarks(
+                        count: 60,
+                        radius: progressSize / 2 - 2,
+                        color: .primary
+                    )
+
                     // Background circle
                     Circle()
-                        .stroke(Color.primary.opacity(0.1), lineWidth: progressLineWidth)
+                        .stroke(Color.TimerFloat.ringBackground, lineWidth: progressLineWidth)
                         .frame(width: progressSize, height: progressSize)
 
-                    // Progress arc
-                    Circle()
-                        .trim(from: 0, to: viewModel.progress)
-                        .stroke(
-                            progressColor,
-                            style: StrokeStyle(
-                                lineWidth: progressLineWidth,
-                                lineCap: .round
-                            )
+                    // Tapered progress arc with gradient
+                    TaperedProgressRing(
+                        progress: viewModel.progress,
+                        baseWidth: TimerDesign.progressLineWidthThick,
+                        color: progressColor,
+                        size: progressSize
+                    )
+                    .animation(TimerAnimations.progress, value: viewModel.progress)
+
+                    // Glowing endpoint
+                    if viewModel.progress > 0.01 && viewModel.isRunning {
+                        ProgressEndpoint(
+                            progress: viewModel.progress,
+                            radius: progressSize / 2,
+                            color: progressColor
                         )
-                        .frame(width: progressSize, height: progressSize)
-                        .rotationEffect(.degrees(-90))
-                        .animation(.linear(duration: 0.1), value: viewModel.progress)
+                    }
 
                     // Time display using TimelineView for precise updates
                     TimelineView(.periodic(from: .now, by: 1.0)) { _ in
                         Text(viewModel.formattedTime)
-                            .font(.system(size: 24, weight: .semibold, design: .monospaced))
+                            .font(TimerTypography.timeDisplay(size: 24))
                             .foregroundStyle(.primary)
                     }
                 }
@@ -88,7 +108,7 @@ struct TimerOverlayView: View {
                 if viewModel.isPaused {
                     Label("Paused", systemImage: "pause.fill")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.TimerFloat.warning)
                 }
             }
             .padding(12)
@@ -106,12 +126,14 @@ struct TimerOverlayView: View {
                     Spacer()
                 }
                 .padding(4)
+                .transition(.opacity.combined(with: .scale(scale: 0.8)))
             }
         }
-        .frame(width: 120, height: 120)
-        .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+        .frame(width: TimerDesign.overlaySize, height: TimerDesign.overlaySize)
+        .overlayShadow()
         .opacity(currentOpacity)
-        .animation(.easeInOut(duration: 0.2), value: isHovered)
+        .hoverScale(isHovered)
+        .animation(TimerAnimations.hover, value: isHovered)
         .onHover { hovering in
             isHovered = hovering
         }
@@ -151,15 +173,15 @@ struct TimerOverlayView: View {
     private var progressColor: Color {
         switch true {
         case viewModel.isCompleted:
-            return .green
+            return Color.TimerFloat.complete
         case viewModel.isPaused:
-            return .orange
+            return Color.TimerFloat.warning
         case viewModel.progress > 0.9:
-            return .red
+            return Color.TimerFloat.urgent
         case viewModel.progress > 0.75:
-            return .orange
+            return Color.TimerFloat.warning
         default:
-            return .accentColor
+            return Color.TimerFloat.primary
         }
     }
 }
@@ -169,6 +191,7 @@ struct TimerOverlayView: View {
 /// Animation phases for completion celebration
 enum CompletionAnimationPhase: CaseIterable {
     case initial
+    case burst
     case pulse1
     case pulse2
     case settle
@@ -176,20 +199,33 @@ enum CompletionAnimationPhase: CaseIterable {
     /// Scale factor for each phase
     var scale: CGFloat {
         switch self {
-        case .initial: return 0.8
-        case .pulse1: return 1.15
+        case .initial: return 0.6
+        case .burst: return 1.2
+        case .pulse1: return 1.1
         case .pulse2: return 0.95
         case .settle: return 1.0
         }
     }
 
-    /// Opacity for glow effect
+    /// Opacity for golden glow effect
     var glowOpacity: Double {
         switch self {
         case .initial: return 0
+        case .burst: return 0.9
         case .pulse1: return 0.6
         case .pulse2: return 0.3
-        case .settle: return 0
+        case .settle: return 0.15
+        }
+    }
+
+    /// Warm background tint opacity
+    var warmBackgroundOpacity: Double {
+        switch self {
+        case .initial: return 0
+        case .burst: return 0.4
+        case .pulse1: return 0.3
+        case .pulse2: return 0.15
+        case .settle: return 0.05
         }
     }
 
@@ -197,7 +233,7 @@ enum CompletionAnimationPhase: CaseIterable {
     var rotation: Double {
         switch self {
         case .initial: return -45
-        case .pulse1, .pulse2, .settle: return 0
+        case .burst, .pulse1, .pulse2, .settle: return 0
         }
     }
 }
@@ -210,8 +246,14 @@ struct TimerCompletedOverlayView: View {
     /// Base opacity when not hovered (from preferences)
     var idleOpacity: Double = 0.8
 
+    /// Callback when completion sound should play
+    var onPlaySound: (() -> Void)?
+
     /// Track hover state
     @State private var isHovered: Bool = false
+
+    /// Whether sound has been played
+    @State private var soundPlayed: Bool = false
 
     /// Current opacity based on hover state
     private var currentOpacity: Double {
@@ -220,8 +262,25 @@ struct TimerCompletedOverlayView: View {
 
     var body: some View {
         ZStack {
+            // Warm glow background layer
+            if animationsEnabled {
+                RoundedRectangle(cornerRadius: TimerDesign.overlayCornerRadius)
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                Color.TimerFloat.celebrationGlow.opacity(0.3),
+                                Color.TimerFloat.celebrationWarm.opacity(0.1),
+                                Color.clear
+                            ],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 80
+                        )
+                    )
+            }
+
             // Background with material effect
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: TimerDesign.overlayCornerRadius)
                 .fill(.regularMaterial)
 
             if animationsEnabled {
@@ -230,12 +289,19 @@ struct TimerCompletedOverlayView: View {
                 staticContent
             }
         }
-        .frame(width: 120, height: 120)
-        .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+        .frame(width: TimerDesign.overlaySize, height: TimerDesign.overlaySize)
+        .overlayShadow()
         .opacity(currentOpacity)
-        .animation(.easeInOut(duration: 0.2), value: isHovered)
+        .hoverScale(isHovered)
+        .animation(TimerAnimations.hover, value: isHovered)
         .onHover { hovering in
             isHovered = hovering
+        }
+        .onAppear {
+            if !soundPlayed {
+                soundPlayed = true
+                onPlaySound?()
+            }
         }
         // Accessibility
         .accessibilityElement(children: .combine)
@@ -249,22 +315,60 @@ struct TimerCompletedOverlayView: View {
     private var animatedContent: some View {
         PhaseAnimator(CompletionAnimationPhase.allCases) { phase in
             ZStack {
-                // Glow effect behind the checkmark
+                // Warm golden glow effect (casino-inspired)
                 Circle()
-                    .fill(.green.opacity(0.3))
-                    .frame(width: 70, height: 70)
-                    .blur(radius: 15)
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                Color.TimerFloat.celebrationGlow,
+                                Color.TimerFloat.celebrationWarm.opacity(0.5),
+                                Color.clear
+                            ],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 50
+                        )
+                    )
+                    .frame(width: 100, height: 100)
+                    .blur(radius: TimerDesign.celebrationGlowRadius)
                     .opacity(phase.glowOpacity)
 
+                // Secondary emerald glow
+                Circle()
+                    .fill(Color.TimerFloat.complete.opacity(0.4))
+                    .frame(width: 60, height: 60)
+                    .blur(radius: 12)
+                    .opacity(phase.glowOpacity * 0.7)
+
                 VStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 48))
-                        .foregroundStyle(.green)
-                        .scaleEffect(phase.scale)
-                        .rotationEffect(.degrees(phase.rotation))
+                    // Checkmark with golden accent
+                    ZStack {
+                        // Golden ring behind checkmark
+                        Circle()
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        Color.TimerFloat.celebrationGlow,
+                                        Color.TimerFloat.celebrationWarm
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 3
+                            )
+                            .frame(width: 54, height: 54)
+                            .opacity(phase.glowOpacity * 0.8)
+
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 48))
+                            .foregroundStyle(Color.TimerFloat.complete)
+                    }
+                    .scaleEffect(phase.scale)
+                    .rotationEffect(.degrees(phase.rotation))
 
                     Text("Complete!")
-                        .font(.headline)
+                        .font(TimerTypography.label(size: 14))
+                        .fontWeight(.semibold)
                         .foregroundStyle(.primary)
                         .opacity(phase == .initial ? 0 : 1)
                 }
@@ -273,13 +377,15 @@ struct TimerCompletedOverlayView: View {
         } animation: { phase in
             switch phase {
             case .initial:
-                .easeOut(duration: 0.1)
+                .easeOut(duration: 0.05)
+            case .burst:
+                .spring(response: 0.25, dampingFraction: 0.4)
             case .pulse1:
                 .spring(response: 0.3, dampingFraction: 0.5)
             case .pulse2:
                 .spring(response: 0.2, dampingFraction: 0.6)
             case .settle:
-                .easeInOut(duration: 0.3)
+                .easeInOut(duration: 0.4)
             }
         }
     }
@@ -289,10 +395,11 @@ struct TimerCompletedOverlayView: View {
         VStack(spacing: 8) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 48))
-                .foregroundStyle(.green)
+                .foregroundStyle(Color.TimerFloat.complete)
 
             Text("Complete!")
-                .font(.headline)
+                .font(TimerTypography.label(size: 14))
+                .fontWeight(.semibold)
                 .foregroundStyle(.primary)
         }
         .padding(12)

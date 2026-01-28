@@ -64,6 +64,7 @@ struct MenuBarIcon: View {
 struct MenuPopoverView: View {
     let appController: AppController
     @State private var showingSettings = false
+    @State private var headerButtonPressed: String?
 
     /// Spawn a new TimerFloat instance
     private func spawnNewTimer() {
@@ -80,37 +81,53 @@ struct MenuPopoverView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 12) {
-                // Header
-                HStack {
-                    Text("TimerFloat")
-                        .font(.headline)
-                        .accessibilityAddTraits(.isHeader)
-                    Spacer()
-                    Button {
-                        spawnNewTimer()
-                    } label: {
-                        Image(systemName: "plus.circle")
-                            .font(.body)
-                    }
-                    .buttonStyle(.borderless)
-                    .help("New Timer")
-                    .accessibilityLabel("New Timer")
-                    .accessibilityHint("Opens a new TimerFloat instance")
+            VStack(spacing: 16) {
+                // Header with branding
+                HStack(spacing: 8) {
+                    // App icon/branding
+                    Image(systemName: "timer.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(Color.TimerFloat.primary)
 
-                    Button {
-                        showingSettings = true
-                    } label: {
-                        Image(systemName: "gear")
-                            .font(.body)
+                    Text("TimerFloat")
+                        .font(TimerTypography.label(size: 16))
+                        .fontWeight(.semibold)
+                        .accessibilityAddTraits(.isHeader)
+
+                    Spacer()
+
+                    // Action buttons with press feedback
+                    HStack(spacing: 4) {
+                        PopoverIconButton(
+                            systemName: "plus.circle",
+                            isPressed: headerButtonPressed == "new",
+                            action: {
+                                headerButtonPressed = "new"
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    headerButtonPressed = nil
+                                }
+                                spawnNewTimer()
+                            },
+                            help: "New Timer"
+                        )
+
+                        PopoverIconButton(
+                            systemName: "gear",
+                            isPressed: headerButtonPressed == "settings",
+                            action: {
+                                headerButtonPressed = "settings"
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    headerButtonPressed = nil
+                                }
+                                showingSettings = true
+                            },
+                            help: "Settings"
+                        )
                     }
-                    .buttonStyle(.borderless)
-                    .help("Settings")
-                    .accessibilityLabel("Settings")
-                    .accessibilityHint("Opens the settings panel")
                 }
 
                 Divider()
+                    .padding(.horizontal, -16)
 
                 // Timer state display or quick start buttons
                 if appController.timerViewModel.isActive {
@@ -121,13 +138,39 @@ struct MenuPopoverView: View {
                     QuickStartView(appController: appController)
                 }
             }
-            .padding()
-            .frame(width: 200)
+            .padding(16)
+            .frame(width: 240)
             .background(.ultraThinMaterial)
             .navigationDestination(isPresented: $showingSettings) {
                 SettingsView()
             }
         }
+    }
+}
+
+/// Icon button with press feedback for popover
+struct PopoverIconButton: View {
+    let systemName: String
+    let isPressed: Bool
+    let action: () -> Void
+    let help: String
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .frame(width: 28, height: 28)
+                .background(
+                    Circle()
+                        .fill(Color.primary.opacity(isPressed ? 0.1 : 0))
+                )
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(isPressed ? TimerDesign.pressScale : 1.0)
+        .animation(TimerAnimations.press, value: isPressed)
+        .help(help)
+        .accessibilityLabel(help)
     }
 }
 
@@ -147,45 +190,65 @@ struct SettingsView: View {
     @State private var animationsEnabled: Bool = true
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 0) {
             // Header with back button
             HStack {
                 Button {
                     dismiss()
                 } label: {
-                    Image(systemName: "chevron.left")
-                    Text("Back")
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.caption.weight(.semibold))
+                        Text("Back")
+                            .font(.subheadline)
+                    }
                 }
-                .buttonStyle(.borderless)
-                Spacer()
-            }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.TimerFloat.primary)
 
-            Text("Settings")
-                .font(.headline)
+                Spacer()
+
+                Image(systemName: "gearshape.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .padding()
 
             Divider()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 20) {
                     // Notifications section
-                    SettingsSection(title: "Notifications") {
+                    SettingsSection(title: "Notifications", icon: "bell.fill") {
                         NotificationPermissionRow()
 
-                        Toggle("Show alerts", isOn: $notificationsEnabled)
-                            .onChange(of: notificationsEnabled) { _, newValue in
+                        SettingsToggle(
+                            title: "Show alerts",
+                            isOn: $notificationsEnabled,
+                            onChange: { newValue in
                                 try? preferencesService.updateNotificationsEnabled(newValue)
                             }
+                        )
 
-                        Toggle("Play sound", isOn: $soundEnabled)
-                            .onChange(of: soundEnabled) { _, newValue in
+                        SettingsToggle(
+                            title: "Play sound",
+                            subtitle: "Celebration chime on completion",
+                            isOn: $soundEnabled,
+                            onChange: { newValue in
                                 try? preferencesService.updateSoundEnabled(newValue)
                             }
+                        )
                     }
 
                     // Timer section
-                    SettingsSection(title: "Timer") {
+                    SettingsSection(title: "Timer", icon: "timer") {
                         HStack {
-                            Text("Default duration")
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Default duration")
+                                    .font(.subheadline)
+                                Text("For quick start")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                             Spacer()
                             Picker("", selection: $defaultDuration) {
                                 Text("5 min").tag(5)
@@ -195,7 +258,7 @@ struct SettingsView: View {
                                 Text("60 min").tag(60)
                             }
                             .labelsHidden()
-                            .frame(width: 80)
+                            .frame(width: 90)
                             .onChange(of: defaultDuration) { _, newValue in
                                 try? preferencesService.updateDefaultDuration(newValue)
                             }
@@ -203,42 +266,57 @@ struct SettingsView: View {
                     }
 
                     // Overlay section
-                    SettingsSection(title: "Overlay") {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Idle opacity: \(Int(overlayOpacity * 100))%")
-                                .font(.caption)
+                    SettingsSection(title: "Overlay", icon: "square.on.square") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Idle opacity")
+                                    .font(.subheadline)
+                                Spacer()
+                                Text("\(Int(overlayOpacity * 100))%")
+                                    .font(TimerTypography.label(size: 13))
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+                            }
                             Slider(value: $overlayOpacity, in: 0.3...1.0, step: 0.1)
+                                .tint(Color.TimerFloat.primary)
                                 .onChange(of: overlayOpacity) { _, newValue in
                                     try? preferencesService.updateOverlayIdleOpacity(newValue)
                                 }
                         }
 
-                        Toggle("Completion animations", isOn: $animationsEnabled)
-                            .onChange(of: animationsEnabled) { _, newValue in
+                        SettingsToggle(
+                            title: "Completion animations",
+                            subtitle: "Celebratory effects when done",
+                            isOn: $animationsEnabled,
+                            onChange: { newValue in
                                 try? preferencesService.updateAnimationsEnabled(newValue)
                             }
+                        )
 
-                        Button("Reset position") {
+                        Button {
                             try? preferencesService.resetOverlayPosition()
+                        } label: {
+                            Label("Reset position", systemImage: "arrow.counterclockwise")
+                                .font(.caption)
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                     }
 
                     // General section
-                    SettingsSection(title: "General") {
+                    SettingsSection(title: "General", icon: "gearshape") {
                         LaunchAtLoginToggle(isEnabled: $launchAtLogin)
                     }
 
                     // Hotkeys section
-                    SettingsSection(title: "Keyboard Shortcuts") {
+                    SettingsSection(title: "Shortcuts", icon: "keyboard") {
                         HotkeySettingsView()
                     }
                 }
+                .padding()
             }
         }
-        .padding()
-        .frame(width: 220, height: 420)
+        .frame(width: 260, height: 480)
         .background(.ultraThinMaterial)
         .onAppear {
             loadPreferences()
@@ -257,21 +335,62 @@ struct SettingsView: View {
     }
 }
 
+/// Settings toggle with optional subtitle
+struct SettingsToggle: View {
+    let title: String
+    var subtitle: String? = nil
+    @Binding var isOn: Bool
+    let onChange: (Bool) -> Void
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .toggleStyle(.switch)
+        .tint(Color.TimerFloat.primary)
+        .onChange(of: isOn) { _, newValue in
+            onChange(newValue)
+        }
+    }
+}
+
 /// Reusable settings section container
 struct SettingsSection<Content: View>: View {
     let title: String
+    var icon: String? = nil
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 10) {
+            // Section header
+            HStack(spacing: 6) {
+                if let icon {
+                    Image(systemName: icon)
+                        .font(.caption)
+                        .foregroundStyle(Color.TimerFloat.primary.opacity(0.8))
+                }
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+            }
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 10) {
                 content
             }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.primary.opacity(0.03))
+            )
         }
     }
 }
@@ -282,8 +401,8 @@ struct QuickStartView: View {
     @State private var selectedMode: TimerMode = .countdown
 
     var body: some View {
-        VStack(spacing: 8) {
-            // Mode picker
+        VStack(spacing: 12) {
+            // Mode picker with custom styling
             Picker("Mode", selection: $selectedMode) {
                 ForEach(TimerMode.allCases, id: \.self) { mode in
                     Label(mode.displayName, systemImage: mode.iconName)
@@ -294,43 +413,88 @@ struct QuickStartView: View {
             .labelsHidden()
 
             if selectedMode == .countdown {
-                // Countdown preset buttons
-                Text("Quick Start")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                // Countdown section
+                VStack(spacing: 10) {
+                    // Section header
+                    HStack {
+                        Text("Quick Start")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
 
-                HStack(spacing: 8) {
-                    PresetButton(minutes: 5, appController: appController)
-                    PresetButton(minutes: 15, appController: appController)
+                    // Preset buttons in a grid
+                    VStack(spacing: 8) {
+                        HStack(spacing: 8) {
+                            PresetButton(minutes: 5, appController: appController)
+                            PresetButton(minutes: 15, appController: appController)
+                        }
+
+                        HStack(spacing: 8) {
+                            PresetButton(minutes: 25, appController: appController, isPomodoro: true)
+                            PresetButton(minutes: 45, appController: appController)
+                        }
+                    }
                 }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.primary.opacity(0.03))
+                )
 
-                HStack(spacing: 8) {
-                    PresetButton(minutes: 25, appController: appController)
-                    PresetButton(minutes: 45, appController: appController)
+                // Custom duration section
+                VStack(spacing: 10) {
+                    HStack {
+                        Text("Custom")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+
+                    CustomDurationInputView(appController: appController)
                 }
-
-                Divider()
-
-                // Custom duration input
-                CustomDurationInputView(appController: appController)
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.primary.opacity(0.03))
+                )
             } else {
-                // Stopwatch start button
-                VStack(spacing: 12) {
-                    Image(systemName: "stopwatch")
-                        .font(.system(size: 32))
+                // Stopwatch section
+                VStack(spacing: 16) {
+                    // Stopwatch illustration
+                    ZStack {
+                        Circle()
+                            .fill(Color.TimerFloat.stopwatch.opacity(0.1))
+                            .frame(width: 70, height: 70)
+
+                        Image(systemName: "stopwatch.fill")
+                            .font(.system(size: 32))
+                            .foregroundStyle(Color.TimerFloat.stopwatch)
+                    }
+
+                    Text("Track elapsed time")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
 
                     Button {
                         appController.startStopwatch()
                     } label: {
-                        Text("Start Stopwatch")
+                        Label("Start Stopwatch", systemImage: "play.fill")
                             .frame(maxWidth: .infinity)
+                            .padding(.vertical, 2)
                     }
                     .buttonStyle(.borderedProminent)
+                    .tint(Color.TimerFloat.stopwatch)
                     .accessibilityLabel("Start stopwatch")
                     .accessibilityHint("Starts counting time from zero")
                 }
-                .padding(.vertical, 8)
+                .padding(16)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.primary.opacity(0.03))
+                )
             }
         }
     }
@@ -414,17 +578,41 @@ struct CustomDurationInputView: View {
 struct PresetButton: View {
     let minutes: Int
     let appController: AppController
+    var isPomodoro: Bool = false
+
+    @State private var isPressed = false
 
     var body: some View {
         Button {
             appController.startTimer(minutes: minutes)
         } label: {
-            Text("\(minutes)m")
-                .font(.system(.body, design: .rounded, weight: .medium))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
+            VStack(spacing: 2) {
+                Text("\(minutes)m")
+                    .font(TimerTypography.label(size: 15))
+                    .fontWeight(.semibold)
+
+                if isPomodoro {
+                    Text("Pomodoro")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.white.opacity(0.8))
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, isPomodoro ? 6 : 8)
+            .background(
+                RoundedRectangle(cornerRadius: TimerDesign.buttonCornerRadius)
+                    .fill(Color.TimerFloat.primary)
+            )
+            .foregroundStyle(.white)
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.plain)
+        .scaleEffect(isPressed ? TimerDesign.pressScale : 1.0)
+        .animation(TimerAnimations.press, value: isPressed)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in isPressed = true }
+                .onEnded { _ in isPressed = false }
+        )
         .accessibilityLabel("Start \(minutes) minute timer")
         .accessibilityHint("Starts a \(minutes) minute countdown timer")
     }
@@ -434,43 +622,71 @@ struct PresetButton: View {
 struct ActiveTimerView: View {
     let appController: AppController
     @State private var showWindowPicker: Bool = false
+    @State private var pauseButtonPressed = false
+    @State private var cancelButtonPressed = false
 
     private var isStopwatch: Bool {
         appController.timerViewModel.isStopwatch
     }
 
+    private var accentColor: Color {
+        isStopwatch ? Color.TimerFloat.stopwatch : Color.TimerFloat.primary
+    }
+
     var body: some View {
-        VStack(spacing: 12) {
-            // Mode indicator
-            Label(
-                isStopwatch ? "Stopwatch" : "Timer",
-                systemImage: isStopwatch ? "stopwatch.fill" : "timer"
+        VStack(spacing: 14) {
+            // Mode indicator with icon
+            HStack(spacing: 6) {
+                Image(systemName: isStopwatch ? "stopwatch.fill" : "timer")
+                    .font(.caption)
+                    .foregroundStyle(accentColor)
+                Text(isStopwatch ? "Stopwatch" : "Countdown")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(accentColor.opacity(0.1))
             )
-            .font(.caption)
-            .foregroundStyle(.secondary)
 
             // Time display
             if isStopwatch {
                 Text(appController.timerViewModel.formattedTimeWithMillis)
-                    .font(.system(size: 28, weight: .semibold, design: .monospaced))
+                    .font(TimerTypography.timeMedium(size: 28))
                     .foregroundStyle(.primary)
                     .accessibilityLabel("Time elapsed")
                     .accessibilityValue(appController.timerViewModel.formattedTime)
             } else {
                 Text(appController.timerViewModel.formattedTime)
-                    .font(.system(size: 32, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.primary)
+                    .font(TimerTypography.timeLarge(size: 32))
+                    .foregroundStyle(timerTextColor)
                     .accessibilityLabel("Time remaining")
                     .accessibilityValue(appController.timerViewModel.formattedTime)
 
-                // Progress bar (countdown only)
-                ProgressView(value: appController.timerViewModel.progress)
-                    .progressViewStyle(.linear)
-                    .accessibilityLabel("Timer progress")
-                    .accessibilityValue("\(Int(appController.timerViewModel.progress * 100)) percent complete")
+                // Progress bar with gradient
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        // Background track
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color.primary.opacity(0.1))
+                            .frame(height: 6)
+
+                        // Progress fill
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(progressGradient)
+                            .frame(width: geometry.size.width * appController.timerViewModel.progress, height: 6)
+                            .animation(.linear(duration: 0.1), value: appController.timerViewModel.progress)
+                    }
+                }
+                .frame(height: 6)
+                .accessibilityLabel("Timer progress")
+                .accessibilityValue("\(Int(appController.timerViewModel.progress * 100)) percent complete")
             }
 
-            // Control buttons
+            // Control buttons with press feedback
             HStack(spacing: 12) {
                 // Pause/Resume button
                 Button {
@@ -478,8 +694,17 @@ struct ActiveTimerView: View {
                 } label: {
                     Image(systemName: appController.timerViewModel.isRunning ? "pause.fill" : "play.fill")
                         .font(.title2)
+                        .frame(width: 44, height: 36)
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(accentColor)
+                .scaleEffect(pauseButtonPressed ? TimerDesign.pressScale : 1.0)
+                .animation(TimerAnimations.press, value: pauseButtonPressed)
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { _ in pauseButtonPressed = true }
+                        .onEnded { _ in pauseButtonPressed = false }
+                )
                 .accessibilityLabel(appController.timerViewModel.isRunning ? "Pause" : "Resume")
 
                 // Stop/Cancel button
@@ -492,19 +717,33 @@ struct ActiveTimerView: View {
                 } label: {
                     Image(systemName: "xmark")
                         .font(.title2)
+                        .frame(width: 44, height: 36)
                 }
                 .buttonStyle(.bordered)
+                .scaleEffect(cancelButtonPressed ? TimerDesign.pressScale : 1.0)
+                .animation(TimerAnimations.press, value: cancelButtonPressed)
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { _ in cancelButtonPressed = true }
+                        .onEnded { _ in cancelButtonPressed = false }
+                )
                 .accessibilityLabel(isStopwatch ? "Stop stopwatch" : "Cancel timer")
             }
 
             Divider()
+                .padding(.horizontal, -16)
 
-            // Pin status
+            // Pin status section
             HStack {
                 if WindowPinningService.shared.isPinned {
-                    Label("Pinned", systemImage: "pin.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
+                    HStack(spacing: 4) {
+                        Image(systemName: "pin.fill")
+                            .font(.caption)
+                        Text("Pinned")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                    }
+                    .foregroundStyle(Color.TimerFloat.warning)
 
                     Spacer()
 
@@ -518,6 +757,7 @@ struct ActiveTimerView: View {
                         showWindowPicker = true
                     } label: {
                         Label("Pin to Window", systemImage: "pin")
+                            .font(.caption)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -529,6 +769,24 @@ struct ActiveTimerView: View {
                 }
             }
         }
+    }
+
+    /// Text color based on progress
+    private var timerTextColor: Color {
+        let progress = appController.timerViewModel.progress
+        switch progress {
+        case 0.9...:
+            return Color.TimerFloat.urgent
+        case 0.75..<0.9:
+            return Color.TimerFloat.warning
+        default:
+            return .primary
+        }
+    }
+
+    /// Gradient for progress bar
+    private var progressGradient: LinearGradient {
+        LinearGradient.timerProgress(progress: appController.timerViewModel.progress)
     }
 }
 
