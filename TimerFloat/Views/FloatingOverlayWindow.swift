@@ -76,6 +76,12 @@ final class FloatingOverlayWindow: NSWindow {
 
     /// Handle mouse drag to move the window
     override func mouseDragged(with event: NSEvent) {
+        // Don't allow dragging when pinned to another window
+        let isPinned = MainActor.assumeIsolated { WindowPinningService.shared.isPinned }
+        guard !isPinned else {
+            return
+        }
+
         let currentLocation = NSEvent.mouseLocation
         let newOrigin = NSPoint(
             x: currentLocation.x - initialMouseLocation.x,
@@ -98,6 +104,13 @@ final class FloatingOverlayWindow: NSWindow {
 
     /// Handle mouse up to complete drag
     override func mouseUp(with event: NSEvent) {
+        // Don't save position when pinned (position is controlled by pinning service)
+        let isPinned = MainActor.assumeIsolated { WindowPinningService.shared.isPinned }
+        guard !isPinned else {
+            super.mouseUp(with: event)
+            return
+        }
+
         super.mouseUp(with: event)
         // Post notification for position persistence
         NotificationCenter.default.post(
