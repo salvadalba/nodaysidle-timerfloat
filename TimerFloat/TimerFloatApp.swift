@@ -276,31 +276,62 @@ struct SettingsSection<Content: View>: View {
     }
 }
 
-/// View showing quick start timer presets
+/// View showing quick start timer presets and mode selection
 struct QuickStartView: View {
     let appController: AppController
+    @State private var selectedMode: TimerMode = .countdown
 
     var body: some View {
         VStack(spacing: 8) {
-            Text("Quick Start")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            // Preset buttons
-            HStack(spacing: 8) {
-                PresetButton(minutes: 5, appController: appController)
-                PresetButton(minutes: 15, appController: appController)
+            // Mode picker
+            Picker("Mode", selection: $selectedMode) {
+                ForEach(TimerMode.allCases, id: \.self) { mode in
+                    Label(mode.displayName, systemImage: mode.iconName)
+                        .tag(mode)
+                }
             }
+            .pickerStyle(.segmented)
+            .labelsHidden()
 
-            HStack(spacing: 8) {
-                PresetButton(minutes: 25, appController: appController)
-                PresetButton(minutes: 45, appController: appController)
+            if selectedMode == .countdown {
+                // Countdown preset buttons
+                Text("Quick Start")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 8) {
+                    PresetButton(minutes: 5, appController: appController)
+                    PresetButton(minutes: 15, appController: appController)
+                }
+
+                HStack(spacing: 8) {
+                    PresetButton(minutes: 25, appController: appController)
+                    PresetButton(minutes: 45, appController: appController)
+                }
+
+                Divider()
+
+                // Custom duration input
+                CustomDurationInputView(appController: appController)
+            } else {
+                // Stopwatch start button
+                VStack(spacing: 12) {
+                    Image(systemName: "stopwatch")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.secondary)
+
+                    Button {
+                        appController.startStopwatch()
+                    } label: {
+                        Text("Start Stopwatch")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityLabel("Start stopwatch")
+                    .accessibilityHint("Starts counting time from zero")
+                }
+                .padding(.vertical, 8)
             }
-
-            Divider()
-
-            // Custom duration input
-            CustomDurationInputView(appController: appController)
         }
     }
 }
@@ -403,20 +434,40 @@ struct PresetButton: View {
 struct ActiveTimerView: View {
     let appController: AppController
 
+    private var isStopwatch: Bool {
+        appController.timerViewModel.isStopwatch
+    }
+
     var body: some View {
         VStack(spacing: 12) {
-            // Time display
-            Text(appController.timerViewModel.formattedTime)
-                .font(.system(size: 32, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.primary)
-                .accessibilityLabel("Time remaining")
-                .accessibilityValue(appController.timerViewModel.formattedTime)
+            // Mode indicator
+            Label(
+                isStopwatch ? "Stopwatch" : "Timer",
+                systemImage: isStopwatch ? "stopwatch.fill" : "timer"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
 
-            // Progress bar
-            ProgressView(value: appController.timerViewModel.progress)
-                .progressViewStyle(.linear)
-                .accessibilityLabel("Timer progress")
-                .accessibilityValue("\(Int(appController.timerViewModel.progress * 100)) percent complete")
+            // Time display
+            if isStopwatch {
+                Text(appController.timerViewModel.formattedTimeWithMillis)
+                    .font(.system(size: 28, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.primary)
+                    .accessibilityLabel("Time elapsed")
+                    .accessibilityValue(appController.timerViewModel.formattedTime)
+            } else {
+                Text(appController.timerViewModel.formattedTime)
+                    .font(.system(size: 32, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.primary)
+                    .accessibilityLabel("Time remaining")
+                    .accessibilityValue(appController.timerViewModel.formattedTime)
+
+                // Progress bar (countdown only)
+                ProgressView(value: appController.timerViewModel.progress)
+                    .progressViewStyle(.linear)
+                    .accessibilityLabel("Timer progress")
+                    .accessibilityValue("\(Int(appController.timerViewModel.progress * 100)) percent complete")
+            }
 
             // Control buttons
             HStack(spacing: 12) {
@@ -428,19 +479,21 @@ struct ActiveTimerView: View {
                         .font(.title2)
                 }
                 .buttonStyle(.borderedProminent)
-                .accessibilityLabel(appController.timerViewModel.isRunning ? "Pause timer" : "Resume timer")
-                .accessibilityHint(appController.timerViewModel.isRunning ? "Pauses the countdown" : "Resumes the countdown")
+                .accessibilityLabel(appController.timerViewModel.isRunning ? "Pause" : "Resume")
 
-                // Cancel button
+                // Stop/Cancel button
                 Button(role: .destructive) {
-                    appController.cancelTimer()
+                    if isStopwatch {
+                        appController.stopStopwatch()
+                    } else {
+                        appController.cancelTimer()
+                    }
                 } label: {
                     Image(systemName: "xmark")
                         .font(.title2)
                 }
                 .buttonStyle(.bordered)
-                .accessibilityLabel("Cancel timer")
-                .accessibilityHint("Stops and resets the timer")
+                .accessibilityLabel(isStopwatch ? "Stop stopwatch" : "Cancel timer")
             }
         }
     }
